@@ -21,7 +21,7 @@ class DataLoader:
     def __init__(self, dataset_name: str = 'cosmopedia-v2', 
                  max_samples: Optional[int] = 10000,
                  min_length: int = 10,
-                 max_length: int = 1000):
+                 max_length: int = 5000):  # Increased max length for longer texts
         """
         Initialize data loader.
         
@@ -170,14 +170,33 @@ class DataLoader:
         
         for field in text_fields:
             if field in example and example[field]:
-                return str(example[field]).strip()
+                text = str(example[field]).strip()
+                if len(text) > 10:  # Ensure meaningful content
+                    return text
         
         # If no obvious text field, try to combine multiple fields
         if 'prompt' in example and 'completion' in example:
-            return f"{example['prompt']}\n{example['completion']}"
+            combined = f"{example['prompt']}\n{example['completion']}"
+            if len(combined.strip()) > 10:
+                return combined.strip()
         
-        # Last resort - convert entire example to string
-        return str(example).strip()
+        # Try combining all string fields that look like text
+        text_parts = []
+        for key, value in example.items():
+            if isinstance(value, str) and len(value.strip()) > 20:  # Longer strings are more likely to be content
+                text_parts.append(value.strip())
+        
+        if text_parts:
+            combined = ' '.join(text_parts)
+            if len(combined.strip()) > 10:
+                return combined.strip()
+        
+        # Last resort - convert entire example to string, but only if it's not too short
+        full_text = str(example).strip()
+        if len(full_text) > 50:  # Avoid very short or empty content
+            return full_text
+            
+        return None
     
     def _load_local_dataset(self) -> List[str]:
         """Load from local files (JSON, CSV, TXT)."""
@@ -225,17 +244,31 @@ class DataLoader:
         """Load conversations from CSV file."""
         conversations = []
         
+        logger.info("Loading CSV file: %s", file_path)
+        
         with open(file_path, 'r', encoding='utf-8', newline='') as f:
             reader = csv.DictReader(f)
             
+            # Log column names for debugging
+            if reader.fieldnames:
+                logger.info("CSV columns: %s", reader.fieldnames)
+            
+            row_count = 0
             for row in reader:
+                row_count += 1
+                
                 if self.max_samples and len(conversations) >= self.max_samples:
                     break
                 
                 text = self._extract_text_from_example(row)
                 if text:
                     conversations.append(text)
+                    if len(conversations) == 1:  # Log first successful extraction
+                        logger.info("First extracted text (first 200 chars): %s", text[:200])
+                elif row_count <= 5:  # Log first few failed extractions for debugging
+                    logger.warning("Could not extract text from row %d: %s", row_count, {k: str(v)[:50] for k, v in row.items()})
         
+        logger.info("Loaded %d conversations from %d CSV rows", len(conversations), row_count)
         return conversations
     
     def _load_text_file(self, file_path: str) -> List[str]:

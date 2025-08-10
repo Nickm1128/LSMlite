@@ -38,16 +38,93 @@ def basic_example():
     print("Building model...")
     lsm.build_model()
 
-    # Train on a small dataset using the specific parquet file
     print("Training model...")
-    history = lsm.train('https://huggingface.co/datasets/HuggingFaceTB/smollm-corpus/resolve/main/cosmopedia-v2/train-00000-of-00104.parquet', max_samples=100, epochs=2)
-
-    # Generate some text
-    print("Generating text...")
-    generated = lsm.generate("Hello, how are you?", max_length=30)
-    print(f"Generated: {generated}")
-
-    print("Basic example completed!")
+    
+    # First, let's test with a simple local dataset instead of the CSV
+    # Create a small test dataset
+    test_conversations = [
+        "Hello, how are you today? I'm doing well, thank you for asking.",
+        "What is machine learning? Machine learning is a subset of artificial intelligence.",
+        "Can you explain neural networks? Neural networks are computational models inspired by the brain.",
+        "Tell me about deep learning. Deep learning uses multiple layers to learn complex patterns.",
+        "How does AI work? AI systems process data to make predictions and decisions."
+    ]
+    
+    # Save test data to a temporary file
+    with open("temp_training_data.txt", "w", encoding="utf-8") as f:
+        f.write("\n\n".join(test_conversations))
+    
+    try:
+        # Train with the test data first
+        print("Training with test data...")
+        history = lsm.train("temp_training_data.txt", max_samples=10, epochs=2)
+        
+        # Generate some text
+        print("Generating text...")
+        generated = lsm.generate("Hello, how are you?", max_length=30)
+        print(f"Generated: {generated}")
+        
+        print("Basic example completed!")
+        
+    except Exception as e:
+        print(f"Training failed: {e}")
+        print("Let's try with the original CSV file with better error handling...")
+        
+        try:
+            # Try the original CSV with more debugging
+            from lsm_lite.data.loader import DataLoader
+            
+            # Test data loading first
+            print("Testing data loading from CSV...")
+            data_loader = DataLoader(
+                dataset_name=r"C:\Users\milin\Downloads\train-00000-of-00104.csv",
+                max_samples=10  # Start with just 10 samples
+            )
+            conversations = data_loader.load_conversations()
+            print(f"Loaded {len(conversations)} conversations")
+            
+            if conversations:
+                print("Sample conversation:", conversations[0][:200] + "..." if len(conversations[0]) > 200 else conversations[0])
+                
+                # Now try training
+                history = lsm.train(r"C:\Users\milin\Downloads\train-00000-of-00104.csv", max_samples=10, epochs=1)
+                
+                # Generate some text
+                print("Generating text...")
+                generated = lsm.generate("Hello, how are you?", max_length=30)
+                print(f"Generated: {generated}")
+                
+            else:
+                print("No conversations loaded from CSV file!")
+                
+        except Exception as e2:
+            print(f"CSV training also failed: {e2}")
+            print("Using fallback training data...")
+            
+            # Use the fallback conversations from the data loader
+            from lsm_lite.data.loader import DataLoader
+            data_loader = DataLoader(max_samples=20)
+            fallback_conversations = data_loader._get_fallback_conversations()
+            
+            # Create a temporary file with fallback data
+            with open("fallback_training_data.txt", "w", encoding="utf-8") as f:
+                f.write("\n\n".join(fallback_conversations))
+            
+            history = lsm.train("fallback_training_data.txt", max_samples=20, epochs=2)
+            
+            # Generate some text
+            print("Generating text...")
+            generated = lsm.generate("Hello, how are you?", max_length=30)
+            print(f"Generated: {generated}")
+            
+            print("Basic example completed with fallback data!")
+    
+    finally:
+        # Clean up temporary files
+        import os
+        for temp_file in ["temp_training_data.txt", "fallback_training_data.txt"]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 
 def configuration_example():

@@ -127,25 +127,46 @@ class LSMTrainer:
         """
         logger.info("Preparing training data from %d conversations...", len(conversations))
         
+        if not conversations:
+            raise ValueError("No conversations provided for training")
+        
+        # Debug: Show sample conversations
+        logger.info("Sample conversation: %s", conversations[0][:100] + "..." if len(conversations[0]) > 100 else conversations[0])
+        
         # Create input-target pairs
         input_sequences = []
         target_sequences = []
         
-        for conv in conversations:
+        for i, conv in enumerate(conversations):
+            if not conv or not conv.strip():
+                logger.warning("Empty conversation at index %d, skipping", i)
+                continue
+                
             # Tokenize conversation
-            tokenized = self.tokenizer.tokenize([conv], padding=True, truncation=True)
-            input_ids = tokenized['input_ids'][0]  # Get first (and only) sequence
-            
-            # Create shifted sequences for language modeling
-            # Input: [BOS, token1, token2, ..., tokenN-1]
-            # Target: [token1, token2, ..., tokenN-1, EOS]
-            
-            for i in range(len(input_ids) - 1):
-                if input_ids[i] != 0:  # Skip padding tokens
+            try:
+                tokenized = self.tokenizer.tokenize([conv], padding=True, truncation=True)
+                input_ids = tokenized['input_ids'][0]  # Get first (and only) sequence
+                
+                # Debug: Check tokenization result
+                if i == 0:  # Log first conversation's tokenization
+                    logger.info("First conversation tokenized to %d tokens", len(input_ids))
+                    logger.info("First few tokens: %s", input_ids[:10])
+                
+                # Create shifted sequences for language modeling
+                # Input: [BOS, token1, token2, ..., tokenN-1]
+                # Target: [token1, token2, ..., tokenN-1, EOS]
+                
+                valid_tokens = [token for token in input_ids if token != 0]  # Remove padding
+                
+                if len(valid_tokens) < 2:
+                    logger.warning("Conversation %d has too few valid tokens (%d), skipping", i, len(valid_tokens))
+                    continue
+                
+                for j in range(len(valid_tokens) - 1):
                     # Create context window
-                    start_idx = max(0, i - self.config.max_length + 1)
-                    input_seq = input_ids[start_idx:i+1]
-                    target_token = input_ids[i+1]
+                    start_idx = max(0, j - self.config.max_length + 1)
+                    input_seq = valid_tokens[start_idx:j+1]
+                    target_token = valid_tokens[j+1]
                     
                     # Pad input sequence if needed
                     if len(input_seq) < self.config.max_length:
@@ -154,6 +175,13 @@ class LSMTrainer:
                     
                     input_sequences.append(input_seq)
                     target_sequences.append(target_token)
+                    
+            except Exception as e:
+                logger.error("Error processing conversation %d: %s", i, e)
+                continue
+        
+        if not input_sequences:
+            raise ValueError("No valid training sequences created from conversations. Check that conversations contain meaningful text.")
         
         # Convert to tensors
         input_tensor = tf.constant(input_sequences, dtype=tf.int32)
@@ -161,11 +189,11 @@ class LSMTrainer:
         
         # Create dataset
         dataset = tf.data.Dataset.from_tensor_slices((input_tensor, target_tensor))
-        dataset = dataset.shuffle(buffer_size=10000)
+        dataset = dataset.shuffle(buffer_size=min(10000, len(input_sequences)))
         dataset = dataset.batch(self.config.batch_size)
         dataset = dataset.prefetch(tf.data.AUTOTUNE)
         
-        logger.info("Prepared %d training samples", len(input_sequences))
+        logger.info("Prepared %d training samples from %d conversations", len(input_sequences), len(conversations))
         return dataset, len(input_sequences)
     
     def train(self, conversations: List[str], epochs: int = None, 

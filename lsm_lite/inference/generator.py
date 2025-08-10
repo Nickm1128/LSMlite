@@ -97,7 +97,12 @@ class TextGenerator:
             
             # Get model predictions
             predictions = self.model(context_tensor, training=False)
-            logits = predictions[0, -1, :]  # Get logits for the last position
+            
+            # Handle both 2D and 3D output shapes
+            if len(predictions.shape) == 3:
+                logits = predictions[0, -1, :]  # Get logits for the last position (3D case)
+            else:
+                logits = predictions[0, :]  # Get logits for the batch (2D case)
             
             # Apply repetition penalty
             if repetition_penalty != 1.0:
@@ -158,7 +163,13 @@ class TextGenerator:
                 # Get predictions
                 context_tensor = tf.constant([context], dtype=tf.int32)
                 predictions = self.model(context_tensor, training=False)
-                logits = predictions[0, -1, :]
+                
+                # Handle both 2D and 3D output shapes
+                if len(predictions.shape) == 3:
+                    logits = predictions[0, -1, :]  # Get logits for the last position (3D case)
+                else:
+                    logits = predictions[0, :]  # Get logits for the batch (2D case)
+                    
                 log_probs = tf.nn.log_softmax(logits)
                 
                 # Get top candidates
@@ -306,7 +317,12 @@ class TextGenerator:
         
         # Get model predictions
         predictions = self.model(context_tensor, training=False)
-        logits = predictions[0, -1, :]  # Get logits for the last position
+        
+        # Handle both 2D and 3D output shapes
+        if len(predictions.shape) == 3:
+            logits = predictions[0, -1, :]  # Get logits for the last position (3D case)
+        else:
+            logits = predictions[0, :]  # Get logits for the batch (2D case)
         
         # Get most likely token
         next_token_id = int(tf.argmax(logits).numpy())
@@ -438,7 +454,12 @@ class TextGenerator:
                 # Predict token at position i
                 context_tensor = tf.constant([context], dtype=tf.int32)
                 predictions = self.model(context_tensor, training=False)
-                logits = predictions[0, -1, :]
+                
+                # Handle both 2D and 3D output shapes
+                if len(predictions.shape) == 3:
+                    logits = predictions[0, -1, :]  # Get logits for the last position (3D case)
+                else:
+                    logits = predictions[0, :]  # Get logits for the batch (2D case)
                 
                 # Get log probability of actual token
                 log_probs = tf.nn.log_softmax(logits)
