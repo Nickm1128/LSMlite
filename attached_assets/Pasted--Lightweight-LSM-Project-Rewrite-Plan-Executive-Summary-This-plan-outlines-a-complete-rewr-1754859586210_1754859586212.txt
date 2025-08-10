@@ -1,0 +1,612 @@
+# Lightweight LSM Project Rewrite Plan
+
+## Executive Summary
+
+This plan outlines a complete rewrite of the current LSM (Liquid State Machine) project to create a more streamlined, maintainable, and focused implementation. The current project has grown complex with many advanced features that make it difficult to understand and maintain. This rewrite will preserve the core functionality while dramatically simplifying the architecture.
+
+## Current Project Analysis
+
+### Strengths to Preserve
+- ✅ Custom tokenizer training with multiple backends (GPT-2, BERT, spaCy)
+- ✅ Sparse sine-activated LSM architectures
+- ✅ 2D/3D CNN support for spatial-temporal processing
+- ✅ HuggingFace dataset integration
+- ✅ Convenience API for easy usage
+- ✅ Model persistence and loading
+
+### Issues to Address
+- ❌ Over-engineered architecture with too many abstraction layers
+- ❌ Complex inheritance hierarchies and circular dependencies
+- ❌ Excessive configuration options creating maintenance burden
+- ❌ Multiple overlapping implementations (legacy + enhanced)
+- ❌ Heavy dependency on external libraries
+- ❌ Unclear separation of concerns between components
+- ❌ Complex streaming and caching systems that add little value
+
+## Lightweight Architecture Design
+
+### Core Principles
+1. **Simplicity First**: Minimal viable implementation with clear, direct code paths
+2. **Single Responsibility**: Each component has one clear purpose
+3. **Minimal Dependencies**: Only essential external libraries
+4. **Clear Interfaces**: Simple, predictable APIs
+5. **Easy Testing**: Straightforward unit and integration testing
+6. **Documentation**: Self-documenting code with clear examples
+
+### Project Structure
+```
+lsm_lite/
+├── core/                    # Core LSM components (3 files)
+│   ├── tokenizer.py        # Unified tokenizer with multiple backends
+│   ├── reservoir.py        # Sparse sine-activated reservoir
+│   └── cnn.py             # 2D/3D CNN processors
+├── data/                   # Data handling (2 files)
+│   ├── loader.py          # Dataset loading and preprocessing
+│   └── embeddings.py      # Sinusoidal embeddings
+├── training/               # Training pipeline (1 file)
+│   └── trainer.py         # Unified training orchestrator
+├── inference/              # Inference system (1 file)
+│   └── generator.py       # Text generation and prediction
+├── utils/                  # Utilities (2 files)
+│   ├── config.py          # Configuration management
+│   └── persistence.py     # Model save/load
+├── api.py                 # Main convenience API (1 file)
+└── __init__.py            # Package exports
+```
+
+## Detailed Component Design
+
+### 1. Core Components (3 files, ~800 lines total)
+
+#### 1.1 Tokenizer (`core/tokenizer.py`) - ~200 lines
+```python
+class UnifiedTokenizer:
+    """Single tokenizer class supporting multiple backends."""
+    
+    def __init__(self, backend='gpt2', vocab_size=None, max_length=128):
+        self.backend = backend
+        self.max_length = max_length
+        self._tokenizer = self._create_backend_tokenizer()
+        self.vocab_size = vocab_size or self._detect_vocab_size()
+    
+    def _create_backend_tokenizer(self):
+        """Factory method for backend tokenizers."""
+        if self.backend == 'gpt2':
+            from transformers import GPT2Tokenizer
+            return GPT2Tokenizer.from_pretrained('gpt2')
+        elif self.backend == 'bert':
+            from transformers import BertTokenizer
+            return BertTokenizer.from_pretrained('bert-base-uncased')
+        else:
+            raise ValueError(f"Unsupported backend: {self.backend}")
+    
+    def tokenize(self, texts):
+        """Tokenize texts to integer sequences."""
+        # Implementation here
+    
+    def decode(self, tokens):
+        """Decode token sequences back to text."""
+        # Implementation here
+```
+
+**Key Features:**
+- Support for GPT-2, BERT, and basic word-level tokenization
+- Automatic vocabulary size detection
+- Simple encode/decode interface
+- No caching or streaming complexity
+
+#### 1.2 Reservoir (`core/reservoir.py`) - ~300 lines
+```python
+class SparseReservoir:
+    """Sparse sine-activated liquid state machine."""
+    
+    def __init__(self, input_dim, reservoir_size=512, sparsity=0.1, 
+                 spectral_radius=0.9):
+        self.input_dim = input_dim
+        self.reservoir_size = reservoir_size
+        self.sparsity = sparsity
+        self.spectral_radius = spectral_radius
+        self._build_reservoir()
+    
+    def _build_reservoir(self):
+        """Build sparse reservoir with sine activation."""
+        # Create sparse weight matrices
+        # Apply spectral radius scaling
+        # Initialize sine activation parameters
+    
+    def __call__(self, inputs):
+        """Process inputs through reservoir."""
+        # Sparse matrix multiplication
+        # Sine activation: A * exp(-α * |x|) * sin(ω * x)
+        # Return reservoir states
+```
+
+**Key Features:**
+- Single reservoir type (no hierarchical/attentive variants)
+- Sparse connectivity with configurable sparsity
+- Parametric sine activation function
+- Simple state update mechanism
+
+#### 1.3 CNN Processor (`core/cnn.py`) - ~300 lines
+```python
+class CNNProcessor:
+    """2D/3D CNN for processing reservoir outputs."""
+    
+    def __init__(self, input_shape, architecture='2d', filters=[64, 128]):
+        self.input_shape = input_shape
+        self.architecture = architecture
+        self.filters = filters
+        self.model = self._build_model()
+    
+    def _build_model(self):
+        """Build CNN model based on architecture."""
+        if self.architecture == '2d':
+            return self._build_2d_cnn()
+        elif self.architecture == '3d':
+            return self._build_3d_cnn()
+        else:
+            raise ValueError(f"Unsupported architecture: {self.architecture}")
+    
+    def _build_2d_cnn(self):
+        """Build 2D CNN for spatial processing."""
+        # Simple 2D CNN with conv + pooling layers
+    
+    def _build_3d_cnn(self):
+        """Build 3D CNN for spatial-temporal processing."""
+        # Simple 3D CNN with conv3d + pooling layers
+```
+
+**Key Features:**
+- Support for both 2D and 3D architectures
+- Simple convolutional layers without attention mechanisms
+- Configurable filter sizes
+- Direct TensorFlow/Keras implementation
+
+### 2. Data Components (2 files, ~400 lines total)
+
+#### 2.1 Data Loader (`data/loader.py`) - ~200 lines
+```python
+class DataLoader:
+    """Simple data loading for conversational datasets."""
+    
+    def __init__(self, dataset_name='cosmopedia-v2', max_samples=10000):
+        self.dataset_name = dataset_name
+        self.max_samples = max_samples
+    
+    def load_conversations(self):
+        """Load conversation data from HuggingFace or local files."""
+        if self.dataset_name == 'cosmopedia-v2':
+            return self._load_huggingface_dataset()
+        else:
+            return self._load_local_dataset()
+    
+    def _load_huggingface_dataset(self):
+        """Load from HuggingFace datasets."""
+        from datasets import load_dataset
+        dataset = load_dataset('HuggingFaceTB/cosmopedia-v2', split='train')
+        # Simple preprocessing and conversation extraction
+    
+    def preprocess_conversations(self, conversations):
+        """Basic conversation preprocessing."""
+        # Clean text, split conversations, format for training
+```
+
+**Key Features:**
+- HuggingFace dataset integration (cosmopedia-v2)
+- Local file support (JSON, CSV, TXT)
+- Basic text preprocessing
+- No streaming or complex caching
+
+#### 2.2 Embeddings (`data/embeddings.py`) - ~200 lines
+```python
+class SinusoidalEmbedder:
+    """Sinusoidal positional embeddings for LSM."""
+    
+    def __init__(self, vocab_size, embedding_dim, max_length=512):
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim
+        self.max_length = max_length
+        self._build_embeddings()
+    
+    def _build_embeddings(self):
+        """Build sinusoidal embedding matrix."""
+        # Create token embeddings
+        # Add sinusoidal positional encodings
+        # Combine token + position embeddings
+    
+    def embed(self, token_sequences):
+        """Convert token sequences to embeddings."""
+        # Lookup token embeddings
+        # Add positional encodings
+        # Return embedded sequences
+```
+
+**Key Features:**
+- Standard sinusoidal positional encoding
+- Token + position embedding combination
+- Fixed vocabulary size handling
+- No learnable frequency parameters
+
+### 3. Training Component (1 file, ~300 lines)
+
+#### 3.1 Trainer (`training/trainer.py`) - ~300 lines
+```python
+class LSMTrainer:
+    """Unified training orchestrator for LSM models."""
+    
+    def __init__(self, tokenizer, embedder, reservoir, cnn, config):
+        self.tokenizer = tokenizer
+        self.embedder = embedder
+        self.reservoir = reservoir
+        self.cnn = cnn
+        self.config = config
+        self._build_model()
+    
+    def _build_model(self):
+        """Build complete LSM model pipeline."""
+        # Connect tokenizer -> embedder -> reservoir -> cnn
+        # Create TensorFlow model with all components
+    
+    def train(self, conversations, epochs=10, batch_size=32):
+        """Train the complete LSM model."""
+        # Prepare training data
+        # Create data generators
+        # Train with simple loss function (categorical crossentropy)
+        # Return training history
+    
+    def evaluate(self, test_conversations):
+        """Evaluate model performance."""
+        # Simple perplexity and accuracy metrics
+```
+
+**Key Features:**
+- Single training loop for entire pipeline
+- Standard categorical crossentropy loss
+- Basic metrics (perplexity, accuracy)
+- No complex loss functions or system message support
+
+### 4. Inference Component (1 file, ~200 lines)
+
+#### 4.1 Generator (`inference/generator.py`) - ~200 lines
+```python
+class TextGenerator:
+    """Text generation using trained LSM model."""
+    
+    def __init__(self, model, tokenizer, embedder):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.embedder = embedder
+    
+    def generate(self, prompt, max_length=50, temperature=1.0):
+        """Generate text continuation for a prompt."""
+        # Tokenize prompt
+        # Generate tokens one by one
+        # Apply temperature sampling
+        # Decode and return text
+    
+    def predict_next_token(self, context):
+        """Predict next token given context."""
+        # Process context through model
+        # Return most likely next token
+```
+
+**Key Features:**
+- Simple autoregressive generation
+- Temperature-based sampling
+- No system message support
+- No response-level generation complexity
+
+### 5. Utilities (2 files, ~200 lines total)
+
+#### 5.1 Configuration (`utils/config.py`) - ~100 lines
+```python
+@dataclass
+class LSMConfig:
+    """Simple configuration for LSM models."""
+    
+    # Tokenizer settings
+    tokenizer_backend: str = 'gpt2'
+    max_length: int = 128
+    
+    # Embedding settings
+    embedding_dim: int = 256
+    
+    # Reservoir settings
+    reservoir_size: int = 512
+    sparsity: float = 0.1
+    spectral_radius: float = 0.9
+    
+    # CNN settings
+    cnn_architecture: str = '2d'
+    cnn_filters: List[int] = field(default_factory=lambda: [64, 128])
+    
+    # Training settings
+    epochs: int = 10
+    batch_size: int = 32
+    learning_rate: float = 0.001
+```
+
+#### 5.2 Persistence (`utils/persistence.py`) - ~100 lines
+```python
+class ModelPersistence:
+    """Simple model save/load functionality."""
+    
+    @staticmethod
+    def save_model(model, tokenizer, embedder, config, path):
+        """Save complete model to directory."""
+        # Save TensorFlow model
+        # Save tokenizer state
+        # Save embedder weights
+        # Save configuration
+    
+    @staticmethod
+    def load_model(path):
+        """Load complete model from directory."""
+        # Load all components
+        # Reconstruct model pipeline
+        # Return ready-to-use model
+```
+
+### 6. Main API (1 file, ~200 lines)
+
+#### 6.1 Convenience API (`api.py`) - ~200 lines
+```python
+class LSMLite:
+    """Main convenience API for LSM Lite."""
+    
+    def __init__(self, config=None):
+        self.config = config or LSMConfig()
+        self._model = None
+        self._tokenizer = None
+        self._embedder = None
+    
+    def fit(self, conversations, **kwargs):
+        """Train LSM model on conversation data."""
+        # Create components
+        # Initialize trainer
+        # Run training
+        # Store trained model
+    
+    def generate(self, prompt, **kwargs):
+        """Generate text response to prompt."""
+        # Use trained model for generation
+    
+    def save(self, path):
+        """Save trained model."""
+        # Use persistence utility
+    
+    @classmethod
+    def load(cls, path):
+        """Load trained model."""
+        # Use persistence utility
+        # Return configured instance
+```
+
+## Implementation Timeline
+
+### Phase 1: Core Foundation (Week 1-2)
+1. **Day 1-2**: Set up project structure and dependencies
+2. **Day 3-4**: Implement `UnifiedTokenizer` with GPT-2 and BERT support
+3. **Day 5-6**: Implement `SparseReservoir` with sine activation
+4. **Day 7-8**: Implement basic `CNNProcessor` for 2D processing
+5. **Day 9-10**: Implement `SinusoidalEmbedder`
+6. **Day 11-14**: Create basic unit tests for all core components
+
+### Phase 2: Training Pipeline (Week 3)
+1. **Day 15-16**: Implement `DataLoader` with HuggingFace integration
+2. **Day 17-18**: Implement `LSMTrainer` with basic training loop
+3. **Day 19-20**: Add 3D CNN support to `CNNProcessor`
+4. **Day 21**: Integration testing of training pipeline
+
+### Phase 3: Inference and API (Week 4)
+1. **Day 22-23**: Implement `TextGenerator` for inference
+2. **Day 24-25**: Implement `ModelPersistence` for save/load
+3. **Day 26-27**: Implement main `LSMLite` convenience API
+4. **Day 28**: End-to-end integration testing
+
+### Phase 4: Documentation and Examples (Week 5)
+1. **Day 29-30**: Write comprehensive documentation
+2. **Day 31-32**: Create example scripts and tutorials
+3. **Day 33-34**: Performance testing and optimization
+4. **Day 35**: Final validation and release preparation
+
+## Dependencies
+
+### Minimal Required Dependencies
+```python
+# Core ML libraries
+numpy>=1.21.0
+tensorflow>=2.10.0
+scikit-learn>=1.0.0
+
+# Tokenization
+transformers>=4.21.0  # For GPT-2 and BERT tokenizers
+
+# Data loading
+datasets>=2.14.0      # For HuggingFace datasets
+
+# Utilities
+pandas>=1.3.0         # For data manipulation
+```
+
+### Optional Dependencies
+```python
+# Development and testing
+pytest>=7.0.0
+matplotlib>=3.5.0     # For visualization
+jupyter>=1.0.0        # For notebooks
+```
+
+## Key Simplifications
+
+### Removed Complexity
+1. **No streaming data processing** - Simple batch loading
+2. **No intelligent caching** - Direct computation each time
+3. **No multiple reservoir types** - Single sparse reservoir
+4. **No system message support** - Focus on basic text generation
+5. **No attention mechanisms** - Simple CNN architectures
+6. **No response-level generation** - Token-by-token only
+7. **No advanced loss functions** - Standard categorical crossentropy
+8. **No pipeline orchestration** - Direct component integration
+9. **No memory optimization** - Straightforward implementations
+10. **No production monitoring** - Basic logging only
+
+### Preserved Core Features
+1. **Custom tokenizer training** with multiple backends
+2. **Sparse sine-activated LSM** architectures
+3. **2D and 3D CNN** support
+4. **Sinusoidal embeddings** for positional encoding
+5. **HuggingFace dataset** integration
+6. **Model persistence** and loading
+7. **Convenience API** for easy usage
+8. **Basic text generation** capabilities
+
+## Performance Expectations
+
+### Training Performance
+- **Small models** (256 dim, 512 reservoir): ~5-10 minutes on CPU
+- **Medium models** (512 dim, 1024 reservoir): ~15-30 minutes on CPU
+- **GPU acceleration**: 3-5x speedup with TensorFlow GPU support
+
+### Memory Usage
+- **Small models**: ~500MB RAM during training
+- **Medium models**: ~1-2GB RAM during training
+- **Inference**: ~100-500MB RAM depending on model size
+
+### Model Quality
+- **Comparable performance** to current implementation
+- **Faster training** due to simplified architecture
+- **More predictable behavior** due to reduced complexity
+
+## Migration Strategy
+
+### For Existing Users
+1. **Compatibility layer**: Create adapter functions for existing API calls
+2. **Migration guide**: Step-by-step guide for updating code
+3. **Feature mapping**: Document which advanced features are removed
+4. **Gradual transition**: Support both versions during transition period
+
+### Example Migration
+```python
+# Old complex API
+from lsm.convenience import LSMGenerator
+generator = LSMGenerator(
+    preset='balanced',
+    tokenizer='gpt2',
+    embedding_type='configurable_sinusoidal',
+    reservoir_type='attentive',
+    system_message_support=True,
+    streaming=True,
+    enable_caching=True
+)
+
+# New simplified API
+from lsm_lite import LSMLite, LSMConfig
+config = LSMConfig(
+    tokenizer_backend='gpt2',
+    embedding_dim=256,
+    reservoir_size=512,
+    cnn_architecture='2d'
+)
+generator = LSMLite(config)
+```
+
+## Testing Strategy
+
+### Unit Tests
+- **Component isolation**: Test each component independently
+- **Mock dependencies**: Use mocks for external dependencies
+- **Edge cases**: Test boundary conditions and error cases
+- **Performance**: Basic performance regression tests
+
+### Integration Tests
+- **End-to-end workflows**: Complete training and inference pipelines
+- **Data compatibility**: Test with different data formats
+- **Model persistence**: Save/load functionality
+- **Cross-platform**: Test on different operating systems
+
+### Example Test Structure
+```python
+def test_unified_tokenizer():
+    tokenizer = UnifiedTokenizer('gpt2')
+    texts = ["Hello world", "How are you?"]
+    tokens = tokenizer.tokenize(texts)
+    decoded = tokenizer.decode(tokens[0])
+    assert isinstance(tokens, list)
+    assert len(tokens) == 2
+    assert isinstance(decoded, str)
+
+def test_sparse_reservoir():
+    reservoir = SparseReservoir(input_dim=256, reservoir_size=512)
+    inputs = np.random.randn(32, 10, 256)  # batch, time, features
+    outputs = reservoir(inputs)
+    assert outputs.shape == (32, 10, 512)
+
+def test_end_to_end_training():
+    conversations = ["User: Hi\nBot: Hello!"]
+    model = LSMLite()
+    model.fit(conversations, epochs=1)
+    response = model.generate("Hi there")
+    assert isinstance(response, str)
+    assert len(response) > 0
+```
+
+## Documentation Plan
+
+### User Documentation
+1. **Quick Start Guide**: 5-minute tutorial
+2. **API Reference**: Complete function documentation
+3. **Examples**: Common use cases and patterns
+4. **Migration Guide**: Upgrading from complex version
+
+### Developer Documentation
+1. **Architecture Overview**: Component relationships
+2. **Contributing Guide**: How to extend the system
+3. **Testing Guide**: Running and writing tests
+4. **Performance Guide**: Optimization tips
+
+## Success Metrics
+
+### Code Quality
+- **Lines of code**: <2000 total (vs >10000 current)
+- **Cyclomatic complexity**: <10 per function
+- **Test coverage**: >90%
+- **Documentation coverage**: 100% of public APIs
+
+### Performance
+- **Training time**: <50% of current implementation
+- **Memory usage**: <70% of current implementation
+- **Model quality**: >95% of current performance
+- **Startup time**: <5 seconds for model loading
+
+### Usability
+- **Setup time**: <5 minutes from clone to working demo
+- **Learning curve**: New users productive in <30 minutes
+- **Error messages**: Clear, actionable error descriptions
+- **Examples**: Working examples for all major use cases
+
+## Risk Mitigation
+
+### Technical Risks
+1. **Performance degradation**: Benchmark against current implementation
+2. **Feature gaps**: Clearly document removed features
+3. **Compatibility issues**: Extensive testing on different platforms
+4. **Dependency conflicts**: Minimal dependency set
+
+### Project Risks
+1. **Timeline delays**: Aggressive but realistic timeline with buffers
+2. **Resource constraints**: Focus on core features first
+3. **User adoption**: Clear migration path and benefits
+4. **Maintenance burden**: Simple, well-documented code
+
+## Conclusion
+
+This lightweight rewrite plan will create a much more maintainable, understandable, and focused LSM implementation. By removing unnecessary complexity while preserving core functionality, we can deliver a system that is:
+
+- **Easier to understand** and modify
+- **Faster to train** and deploy
+- **More reliable** and predictable
+- **Better documented** and tested
+- **Simpler to maintain** long-term
+
+The resulting system will serve as a solid foundation that can be extended with additional features as needed, rather than starting with an over-engineered solution that is difficult to work with.
