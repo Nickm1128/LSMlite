@@ -782,7 +782,8 @@ class LSMLite:
         
         # Convert input to tensor
         input_tensor = tf.constant([input_ids], dtype=tf.int32)
-        generated_tokens = input_ids.copy()
+        initial_length = len(input_ids)
+        generated_tokens = input_ids.copy().tolist() if hasattr(input_ids, 'tolist') else list(input_ids)
         
         # Clear wave storage for new generation
         self._dual_cnn_pipeline.wave_storage.clear_storage()
@@ -862,7 +863,7 @@ class LSMLite:
             if next_token == 0:  # Assuming 0 is padding/end token
                 break
         
-        return generated_tokens[len(input_ids):]  # Return only newly generated tokens
+        return generated_tokens[initial_length:]  # Return only newly generated tokens
     
     def _extract_wave_features_for_generation(self, reservoir_states: tf.Tensor, attention_weights: tf.Tensor) -> tf.Tensor:
         """Extract wave features during generation (similar to training but for single step)."""
