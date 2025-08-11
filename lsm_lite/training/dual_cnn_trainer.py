@@ -23,13 +23,13 @@ except ImportError:
 
 try:
     from ..utils.error_handling import (
-        handle_lsm_error, ErrorContext, ComputationError, 
-        MemoryError, global_error_handler, ValidationUtils
+        handle_lsm_error, ErrorContext, ComputationError,
+        MemoryError, ConfigurationError, global_error_handler, ValidationUtils
     )
 except ImportError:
     from lsm_lite.utils.error_handling import (
         handle_lsm_error, ErrorContext, ComputationError,
-        MemoryError, global_error_handler, ValidationUtils
+        MemoryError, ConfigurationError, global_error_handler, ValidationUtils
     )
 
 try:
@@ -310,7 +310,11 @@ class DualCNNTrainer:
                     
                     # Reset metrics for this epoch
                     for metric in self.metrics.values():
-                        metric.reset_states()
+                        # Keras metrics use reset_state() in TF 2.x
+                        if hasattr(metric, 'reset_state'):
+                            metric.reset_state()
+                        elif hasattr(metric, 'reset_states'):
+                            metric.reset_states()
                     
                     # Monitor memory before epoch
                     self._memory_monitor.update()
@@ -1594,7 +1598,8 @@ class DualCNNTrainer:
             try:
                 # Tokenize text with error handling
                 tokenized = self.pipeline.tokenizer.tokenize([text], padding=True, truncation=True)
-                tokens = tokenized['input_ids'][0].numpy().tolist()
+                token_array = tokenized['input_ids'][0]
+                tokens = token_array.numpy().tolist() if hasattr(token_array, 'numpy') else token_array.tolist()
                 
                 # Create input-target pairs for language modeling
                 for i in range(len(tokens) - 1):
@@ -2507,7 +2512,10 @@ class DualCNNTrainer:
             
             # Reset metrics
             for metric in self.metrics.values():
-                metric.reset_states()
+                if hasattr(metric, 'reset_state'):
+                    metric.reset_state()
+                elif hasattr(metric, 'reset_states'):
+                    metric.reset_states()
             
             return True
             

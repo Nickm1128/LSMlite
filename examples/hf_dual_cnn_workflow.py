@@ -11,11 +11,17 @@ CPU in a few seconds.  It also handles environments without internet access
 gracefully by falling back to the library's built in sample texts.
 """
 
+import os
+import sys
+
+# Allow running this example without installing the package
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 from lsm_lite.api import LSMLite
 from lsm_lite.utils.config import DualCNNConfig
 
 
-def main() -> None:
+def main(dataset_name: str = "ag_news") -> None:
     """Run a tiny end‑to‑end training + generation example."""
     # Configure a lightweight dual CNN pipeline
     config = DualCNNConfig(
@@ -41,7 +47,7 @@ def main() -> None:
         # ``quick_dual_cnn_train`` automatically downloads the dataset, fits the
         # embedder and reservoir, then trains both CNNs.
         results = api.quick_dual_cnn_train(
-            dataset_name="ag_news",  # any text dataset on HuggingFace
+            dataset_name=dataset_name,
             max_samples=50,
             dual_cnn_config=config,
             epochs=1,
@@ -63,4 +69,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution only
-    main()
+    sample_path = os.path.join(os.path.dirname(__file__), "sample_data.txt")
+    main(dataset_name=sample_path)
