@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 class UnifiedTokenizer:
     """Single tokenizer class supporting multiple backends."""
     
-    def __init__(self, backend: str = 'gpt2', vocab_size: Optional[int] = None, 
+    def __init__(self, backend: str = 'basic', vocab_size: Optional[int] = None, 
                  max_length: int = 128):
         """
         Initialize unified tokenizer.
         
         Args:
-            backend: Backend to use ('gpt2', 'bert', 'spacy')
+            backend: Backend to use ('basic', 'gpt2', 'bert', 'spacy')
             vocab_size: Override vocabulary size (None for auto-detection)
             max_length: Maximum sequence length for padding/truncation
         """
@@ -29,18 +29,22 @@ class UnifiedTokenizer:
         self.max_length = max_length
         self.vocab_size = vocab_size
         
-        # Initialize backend tokenizer
+        # Initialize backend tokenizer (defaults to basic)
         self._tokenizer = self._create_backend_tokenizer()
         
         # Auto-detect vocab size if not provided
         if self.vocab_size is None:
             self.vocab_size = self._detect_vocab_size()
         
-        logger.info("Tokenizer initialized with backend '%s', vocab_size=%d", 
+        logger.info("Tokenizer initialized with backend '%s', vocab_size=%s", 
                    self.backend, self.vocab_size)
     
     def _create_backend_tokenizer(self):
         """Factory method for backend tokenizers."""
+        if self.backend == 'basic':
+            return self._create_basic_tokenizer()
+        
+        # For other backends, try to import and fallback to basic if they fail
         try:
             if self.backend == 'gpt2':
                 from transformers import GPT2Tokenizer
@@ -58,11 +62,14 @@ class UnifiedTokenizer:
                 return self._create_spacy_tokenizer()
             
             else:
-                raise ValueError(f"Unsupported backend: {self.backend}")
+                logger.warning(f"Unknown backend '{self.backend}', falling back to basic tokenizer")
+                self.backend = 'basic'
+                return self._create_basic_tokenizer()
                 
         except ImportError as e:
-            logger.error("Failed to import required tokenizer backend: %s", e)
-            raise ImportError(f"Required library not found for backend '{self.backend}': {e}")
+            logger.warning(f"Failed to import {self.backend} tokenizer: {e}. Falling back to basic tokenizer.")
+            self.backend = 'basic'
+            return self._create_basic_tokenizer()
     
     def _create_spacy_tokenizer(self):
         """Create a simple spaCy-based tokenizer."""
@@ -78,6 +85,10 @@ class UnifiedTokenizer:
             return SpacyTokenizerWrapper(nlp)
         except ImportError:
             raise ImportError("spaCy not installed. Install with: pip install spacy")
+    
+    def _create_basic_tokenizer(self):
+        """Create a basic tokenizer that doesn't require external libraries."""
+        return BasicTokenizerWrapper(vocab_size=self.vocab_size or 10000)
     
     def _detect_vocab_size(self) -> int:
         """Auto-detect vocabulary size from backend tokenizer."""
@@ -109,6 +120,8 @@ class UnifiedTokenizer:
             return self._tokenize_transformers(texts, padding, truncation)
         elif self.backend == 'spacy':
             return self._tokenize_spacy(texts, padding, truncation)
+        elif self.backend == 'basic':
+            return self._tokenize_basic(texts, padding, truncation)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
     
@@ -127,6 +140,22 @@ class UnifiedTokenizer:
         return {
             'input_ids': encoded['input_ids'],
             'attention_mask': encoded['attention_mask']
+        }
+    
+    def _tokenize_basic(self, texts: List[str], padding: bool, 
+                       truncation: bool) -> Dict[str, np.ndarray]:
+        """Tokenize using basic backend."""
+        result = self._tokenizer(
+            texts,
+            padding='max_length' if padding else False,
+            truncation=truncation,
+            max_length=self.max_length,
+            return_attention_mask=True
+        )
+        
+        return {
+            'input_ids': result['input_ids'],
+            'attention_mask': result['attention_mask']
         }
     
     def _tokenize_spacy(self, texts: List[str], padding: bool, 
@@ -192,6 +221,8 @@ class UnifiedTokenizer:
             )
         elif self.backend == 'spacy':
             decoded = [self._decode_spacy_sequence(seq) for seq in token_ids]
+        elif self.backend == 'basic':
+            decoded = self._tokenizer.batch_decode(token_ids, skip_special_tokens)
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
         
@@ -212,7 +243,7 @@ class UnifiedTokenizer:
                 'unk_token_id': getattr(self._tokenizer, 'unk_token_id', 0) or 0,
             }
         else:
-            # Default special tokens for spaCy
+            # Default special tokens for spaCy and basic
             return {
                 'pad_token_id': 0,
                 'eos_token_id': 1,
@@ -230,3 +261,97 @@ class SpacyTokenizerWrapper:
     
     def __call__(self, text):
         return self.nlp(text)
+
+
+class BasicTokenizerWrapper:
+    """Basic tokenizer wrapper that doesn't require external libraries."""
+    
+    def __init__(self, vocab_size: int = 10000):
+        self.vocab_size = vocab_size
+        self._word_to_id = {}
+        self._id_to_word = {}
+        self._next_id = 4  # Reserve 0-3 for special tokens
+        
+        # Special tokens
+        self._word_to_id.update({
+            '<pad>': 0,
+            '<eos>': 1,
+            '<bos>': 2,
+            '<unk>': 3
+        })
+        self._id_to_word.update({
+            0: '<pad>',
+            1: '<eos>',
+            2: '<bos>',
+            3: '<unk>'
+        })
+    
+    def __call__(self, texts, padding=False, truncation=False, max_length=128, return_attention_mask=True, return_tensors=None):
+        """Tokenize texts using basic word-level tokenization."""
+        if isinstance(texts, str):
+            texts = [texts]
+        
+        input_ids = []
+        attention_masks = []
+        
+        for text in texts:
+            # Simple word tokenization
+            words = text.lower().split()
+            
+            # Convert words to IDs
+            ids = []
+            for word in words:
+                if word not in self._word_to_id:
+                    if self._next_id < self.vocab_size:
+                        word_id = self._next_id
+                        self._word_to_id[word] = word_id
+                        self._id_to_word[word_id] = word
+                        self._next_id += 1
+                    else:
+                        # Use unknown token
+                        word_id = 3  # <unk>
+                else:
+                    word_id = self._word_to_id[word]
+                ids.append(word_id)
+            
+            # Handle truncation
+            if truncation and len(ids) > max_length:
+                ids = ids[:max_length]
+            
+            # Create attention mask
+            attention_mask = [1] * len(ids)
+            
+            # Handle padding
+            if padding and len(ids) < max_length:
+                pad_length = max_length - len(ids)
+                ids.extend([0] * pad_length)  # 0 is pad token
+                attention_mask.extend([0] * pad_length)
+            
+            input_ids.append(ids)
+            attention_masks.append(attention_mask)
+        
+        result = {'input_ids': np.array(input_ids)}
+        if return_attention_mask:
+            result['attention_mask'] = np.array(attention_masks)
+        
+        return result
+    
+    def decode(self, token_ids, skip_special_tokens=True):
+        """Decode token IDs back to text."""
+        if isinstance(token_ids, list) and isinstance(token_ids[0], int):
+            # Single sequence
+            words = []
+            for token_id in token_ids:
+                if token_id in self._id_to_word:
+                    word = self._id_to_word[token_id]
+                    if skip_special_tokens and word.startswith('<') and word.endswith('>'):
+                        continue
+                    words.append(word)
+            return ' '.join(words)
+        else:
+            # Multiple sequences
+            return [self.decode(seq, skip_special_tokens) for seq in token_ids]
+    
+    def batch_decode(self, token_ids, skip_special_tokens=True):
+        """Batch decode token sequences."""
+        return [self.decode(seq, skip_special_tokens) for seq in token_ids]

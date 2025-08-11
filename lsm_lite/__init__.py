@@ -10,7 +10,7 @@ This package provides a simplified, maintainable implementation of LSM with:
 """
 
 from .api import LSMLite
-from .utils.config import LSMConfig
+from .utils.config import LSMConfig, DualCNNConfig
 
 __version__ = "0.1.0"
-__all__ = ["LSMLite", "LSMConfig"]
+__all__ = ["LSMLite", "LSMConfig", "DualCNNConfig"]

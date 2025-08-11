@@ -241,6 +241,373 @@ class LSMConfig:
         return "\n".join(lines)
 
 
+@dataclass
+class DualCNNConfig:
+    """
+    Configuration for dual CNN convenience features.
+    
+    This configuration manages parameters for the complete dual CNN pipeline:
+    - Embedder fitting and initialization
+    - Attentive reservoir with attention mechanisms
+    - First CNN for next-token prediction with rolling wave output
+    - Second CNN for final token prediction generation
+    """
+    
+    # Embedder configuration
+    embedder_fit_samples: int = 10000
+    embedder_batch_size: int = 256
+    embedder_max_length: int = 128
+    
+    # Reservoir configuration
+    reservoir_size: int = 512
+    attention_heads: int = 8
+    attention_dim: int = 64
+    reservoir_sparsity: float = 0.1
+    reservoir_spectral_radius: float = 0.9
+    reservoir_leak_rate: float = 0.3
+    
+    # First CNN configuration (next-token prediction)
+    first_cnn_filters: List[int] = field(default_factory=lambda: [64, 128, 256])
+    first_cnn_architecture: str = '2d'
+    first_cnn_dropout_rate: float = 0.1
+    first_cnn_kernel_size: int = 3
+    
+    # Rolling wave configuration
+    wave_window_size: int = 50
+    wave_overlap: int = 10
+    max_wave_storage: int = 1000
+    wave_feature_dim: int = 256
+    
+    # Second CNN configuration (final prediction)
+    second_cnn_filters: List[int] = field(default_factory=lambda: [128, 256, 512])
+    second_cnn_architecture: str = '2d'
+    second_cnn_dropout_rate: float = 0.1
+    second_cnn_kernel_size: int = 3
+    
+    # Training configuration
+    dual_training_epochs: int = 10
+    training_batch_size: int = 32
+    learning_rate: float = 0.001
+    wave_coordination_weight: float = 0.3
+    final_prediction_weight: float = 0.7
+    validation_split: float = 0.1
+    
+    # Generation configuration
+    generation_max_length: int = 50
+    generation_temperature: float = 1.0
+    generation_top_k: Optional[int] = None
+    generation_top_p: Optional[float] = None
+    
+    # Memory management
+    max_memory_usage_gb: float = 4.0
+    enable_gradient_checkpointing: bool = False
+    mixed_precision: bool = True
+    
+    def validate(self) -> List[str]:
+        """
+        Validate configuration parameters and parameter combinations.
+        
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+        
+        # Embedder validation
+        if self.embedder_fit_samples <= 0:
+            errors.append(f"embedder_fit_samples must be positive, got: {self.embedder_fit_samples}")
+        
+        if self.embedder_batch_size <= 0:
+            errors.append(f"embedder_batch_size must be positive, got: {self.embedder_batch_size}")
+        
+        if self.embedder_max_length <= 0:
+            errors.append(f"embedder_max_length must be positive, got: {self.embedder_max_length}")
+        
+        # Reservoir validation
+        if self.reservoir_size <= 0:
+            errors.append(f"reservoir_size must be positive, got: {self.reservoir_size}")
+        
+        if self.attention_heads <= 0:
+            errors.append(f"attention_heads must be positive, got: {self.attention_heads}")
+        
+        if self.attention_dim <= 0:
+            errors.append(f"attention_dim must be positive, got: {self.attention_dim}")
+        
+        if not (0.0 <= self.reservoir_sparsity <= 1.0):
+            errors.append(f"reservoir_sparsity must be between 0 and 1, got: {self.reservoir_sparsity}")
+        
+        if self.reservoir_spectral_radius <= 0:
+            errors.append(f"reservoir_spectral_radius must be positive, got: {self.reservoir_spectral_radius}")
+        
+        if not (0.0 <= self.reservoir_leak_rate <= 1.0):
+            errors.append(f"reservoir_leak_rate must be between 0 and 1, got: {self.reservoir_leak_rate}")
+        
+        # First CNN validation
+        if not self.first_cnn_filters or not all(f > 0 for f in self.first_cnn_filters):
+            errors.append("first_cnn_filters must be non-empty list of positive integers")
+        
+        if self.first_cnn_architecture not in ['2d', '3d']:
+            errors.append(f"Invalid first_cnn_architecture: {self.first_cnn_architecture}")
+        
+        if not (0.0 <= self.first_cnn_dropout_rate < 1.0):
+            errors.append(f"first_cnn_dropout_rate must be between 0 and 1, got: {self.first_cnn_dropout_rate}")
+        
+        if self.first_cnn_kernel_size <= 0 or self.first_cnn_kernel_size % 2 == 0:
+            errors.append(f"first_cnn_kernel_size must be positive odd number, got: {self.first_cnn_kernel_size}")
+        
+        # Rolling wave validation
+        if self.wave_window_size <= 0:
+            errors.append(f"wave_window_size must be positive, got: {self.wave_window_size}")
+        
+        if self.wave_overlap < 0 or self.wave_overlap >= self.wave_window_size:
+            errors.append(f"wave_overlap must be between 0 and wave_window_size, got: {self.wave_overlap}")
+        
+        if self.max_wave_storage <= 0:
+            errors.append(f"max_wave_storage must be positive, got: {self.max_wave_storage}")
+        
+        if self.wave_feature_dim <= 0:
+            errors.append(f"wave_feature_dim must be positive, got: {self.wave_feature_dim}")
+        
+        # Second CNN validation
+        if not self.second_cnn_filters or not all(f > 0 for f in self.second_cnn_filters):
+            errors.append("second_cnn_filters must be non-empty list of positive integers")
+        
+        if self.second_cnn_architecture not in ['2d', '3d']:
+            errors.append(f"Invalid second_cnn_architecture: {self.second_cnn_architecture}")
+        
+        if not (0.0 <= self.second_cnn_dropout_rate < 1.0):
+            errors.append(f"second_cnn_dropout_rate must be between 0 and 1, got: {self.second_cnn_dropout_rate}")
+        
+        if self.second_cnn_kernel_size <= 0 or self.second_cnn_kernel_size % 2 == 0:
+            errors.append(f"second_cnn_kernel_size must be positive odd number, got: {self.second_cnn_kernel_size}")
+        
+        # Training validation
+        if self.dual_training_epochs <= 0:
+            errors.append(f"dual_training_epochs must be positive, got: {self.dual_training_epochs}")
+        
+        if self.training_batch_size <= 0:
+            errors.append(f"training_batch_size must be positive, got: {self.training_batch_size}")
+        
+        if self.learning_rate <= 0:
+            errors.append(f"learning_rate must be positive, got: {self.learning_rate}")
+        
+        if not (0.0 <= self.validation_split < 1.0):
+            errors.append(f"validation_split must be between 0 and 1, got: {self.validation_split}")
+        
+        # Weight validation
+        if not (0.0 <= self.wave_coordination_weight <= 1.0):
+            errors.append(f"wave_coordination_weight must be between 0 and 1, got: {self.wave_coordination_weight}")
+        
+        if not (0.0 <= self.final_prediction_weight <= 1.0):
+            errors.append(f"final_prediction_weight must be between 0 and 1, got: {self.final_prediction_weight}")
+        
+        # Check that weights sum to approximately 1.0
+        weight_sum = self.wave_coordination_weight + self.final_prediction_weight
+        if abs(weight_sum - 1.0) > 0.01:
+            errors.append(f"wave_coordination_weight and final_prediction_weight should sum to 1.0, got: {weight_sum}")
+        
+        # Generation validation
+        if self.generation_max_length <= 0:
+            errors.append(f"generation_max_length must be positive, got: {self.generation_max_length}")
+        
+        if self.generation_temperature <= 0:
+            errors.append(f"generation_temperature must be positive, got: {self.generation_temperature}")
+        
+        if self.generation_top_k is not None and self.generation_top_k <= 0:
+            errors.append(f"generation_top_k must be positive if specified, got: {self.generation_top_k}")
+        
+        if self.generation_top_p is not None and not (0.0 < self.generation_top_p <= 1.0):
+            errors.append(f"generation_top_p must be between 0 and 1 if specified, got: {self.generation_top_p}")
+        
+        # Memory validation
+        if self.max_memory_usage_gb <= 0:
+            errors.append(f"max_memory_usage_gb must be positive, got: {self.max_memory_usage_gb}")
+        
+        # Parameter combination validation
+        if self.attention_heads > 0 and self.attention_dim % self.attention_heads != 0:
+            errors.append(f"attention_dim ({self.attention_dim}) must be divisible by attention_heads ({self.attention_heads})")
+        
+        # Check if wave storage can handle the expected sequence length
+        if self.wave_window_size > 0:
+            effective_window = self.wave_window_size - self.wave_overlap
+            if effective_window <= 0:
+                errors.append("wave_overlap must be less than wave_window_size for effective windowing")
+        else:
+            errors.append("wave_window_size must be positive for effective windowing")
+        
+        # Memory constraint validation
+        estimated_memory = self._estimate_memory_usage()
+        if estimated_memory > self.max_memory_usage_gb:
+            errors.append(f"Estimated memory usage ({estimated_memory:.2f}GB) exceeds limit ({self.max_memory_usage_gb}GB)")
+        
+        return errors
+    
+    def _estimate_memory_usage(self) -> float:
+        """
+        Estimate memory usage in GB for the dual CNN configuration.
+        
+        Returns:
+            Estimated memory usage in GB
+        """
+        # Rough estimation based on model parameters and batch size
+        
+        # Reservoir memory
+        reservoir_params = self.reservoir_size * self.reservoir_size * self.reservoir_sparsity
+        attention_params = self.attention_heads * self.attention_dim * self.reservoir_size
+        
+        # First CNN memory
+        first_cnn_params = sum(self.first_cnn_filters) * 1000  # Rough estimate
+        
+        # Second CNN memory
+        second_cnn_params = sum(self.second_cnn_filters) * 1000  # Rough estimate
+        
+        # Wave storage memory
+        wave_storage_params = self.max_wave_storage * self.wave_feature_dim
+        
+        # Total parameters
+        total_params = reservoir_params + attention_params + first_cnn_params + second_cnn_params + wave_storage_params
+        
+        # Memory estimation (4 bytes per float32 parameter, plus overhead)
+        memory_gb = (total_params * 4 * self.training_batch_size) / (1024**3)
+        memory_gb *= 2  # Account for gradients and optimizer states
+        memory_gb += 0.5  # Base overhead
+        
+        return memory_gb
+    
+    def get_intelligent_defaults(self, input_data_characteristics: Optional[Dict[str, Any]] = None) -> 'DualCNNConfig':
+        """
+        Generate intelligent defaults based on input data characteristics.
+        
+        Args:
+            input_data_characteristics: Dictionary containing data info like vocab_size, avg_length, etc.
+            
+        Returns:
+            New DualCNNConfig with adjusted defaults
+        """
+        config_dict = asdict(self)
+        
+        if input_data_characteristics:
+            vocab_size = input_data_characteristics.get('vocab_size', 50000)
+            avg_length = input_data_characteristics.get('avg_length', 100)
+            dataset_size = input_data_characteristics.get('dataset_size', 10000)
+            
+            # Adjust embedder samples based on dataset size
+            if dataset_size < 5000:
+                config_dict['embedder_fit_samples'] = min(dataset_size // 2, 2000)
+            elif dataset_size > 50000:
+                config_dict['embedder_fit_samples'] = 20000
+            
+            # Adjust wave window based on average sequence length
+            if avg_length < 50:
+                config_dict['wave_window_size'] = max(10, avg_length // 2)
+                config_dict['wave_overlap'] = max(2, config_dict['wave_window_size'] // 5)
+            elif avg_length > 200:
+                config_dict['wave_window_size'] = 100
+                config_dict['wave_overlap'] = 20
+            
+            # Adjust reservoir size based on vocabulary size
+            if vocab_size < 10000:
+                config_dict['reservoir_size'] = 256
+                config_dict['attention_heads'] = 4
+            elif vocab_size > 100000:
+                config_dict['reservoir_size'] = 1024
+                config_dict['attention_heads'] = 16
+        
+        return DualCNNConfig(**config_dict)
+    
+    def save(self, filepath: str) -> None:
+        """
+        Save configuration to JSON file.
+        
+        Args:
+            filepath: Path to save configuration file
+        """
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
+        
+        config_dict = asdict(self)
+        with open(filepath, 'w') as f:
+            json.dump(config_dict, f, indent=2)
+        
+        logger.info("DualCNN configuration saved to: %s", filepath)
+    
+    @classmethod
+    def load(cls, filepath: str) -> 'DualCNNConfig':
+        """
+        Load configuration from JSON file.
+        
+        Args:
+            filepath: Path to configuration file
+            
+        Returns:
+            DualCNNConfig instance
+        """
+        with open(filepath, 'r') as f:
+            config_dict = json.load(f)
+        
+        config = cls(**config_dict)
+        logger.info("DualCNN configuration loaded from: %s", filepath)
+        
+        return config
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> 'DualCNNConfig':
+        """
+        Create configuration from dictionary.
+        
+        Args:
+            config_dict: Configuration dictionary
+            
+        Returns:
+            DualCNNConfig instance
+        """
+        # Filter out unknown keys
+        valid_keys = set(cls.__dataclass_fields__.keys())
+        filtered_dict = {k: v for k, v in config_dict.items() if k in valid_keys}
+        
+        return cls(**filtered_dict)
+    
+    def to_lsm_config(self) -> LSMConfig:
+        """
+        Convert to compatible LSMConfig for backward compatibility.
+        
+        Returns:
+            LSMConfig instance with compatible parameters
+        """
+        return LSMConfig(
+            max_length=self.embedder_max_length,
+            embedding_dim=self.wave_feature_dim,
+            max_samples=self.embedder_fit_samples,
+            reservoir_size=self.reservoir_size,
+            sparsity=self.reservoir_sparsity,
+            spectral_radius=self.reservoir_spectral_radius,
+            leak_rate=self.reservoir_leak_rate,
+            cnn_architecture=self.first_cnn_architecture,
+            cnn_filters=self.first_cnn_filters,
+            dropout_rate=self.first_cnn_dropout_rate,
+            epochs=self.dual_training_epochs,
+            batch_size=self.training_batch_size,
+            learning_rate=self.learning_rate,
+            validation_split=self.validation_split,
+            generation_temperature=self.generation_temperature,
+            generation_max_length=self.generation_max_length,
+            generation_top_k=self.generation_top_k,
+            generation_top_p=self.generation_top_p
+        )
+    
+    def __str__(self) -> str:
+        """String representation of dual CNN configuration."""
+        lines = ["Dual CNN Configuration:"]
+        lines.append(f"  Embedder: samples={self.embedder_fit_samples}, batch_size={self.embedder_batch_size}")
+        lines.append(f"  Reservoir: size={self.reservoir_size}, attention_heads={self.attention_heads}")
+        lines.append(f"  First CNN: {self.first_cnn_architecture}, filters={self.first_cnn_filters}")
+        lines.append(f"  Wave Storage: window={self.wave_window_size}, overlap={self.wave_overlap}, max={self.max_wave_storage}")
+        lines.append(f"  Second CNN: {self.second_cnn_architecture}, filters={self.second_cnn_filters}")
+        lines.append(f"  Training: epochs={self.dual_training_epochs}, batch_size={self.training_batch_size}")
+        lines.append(f"  Weights: wave={self.wave_coordination_weight:.2f}, final={self.final_prediction_weight:.2f}")
+        lines.append(f"  Memory: max={self.max_memory_usage_gb}GB, estimated={self._estimate_memory_usage():.2f}GB")
+        
+        return "\n".join(lines)
+
+
 class ConfigManager:
     """Utility class for managing multiple configurations."""
     

@@ -122,9 +122,14 @@ class SparseReservoir(tf.keras.layers.Layer):
     
     def _scale_spectral_radius(self, matrix: sparse.csr_matrix) -> sparse.csr_matrix:
         """Scale matrix to have desired spectral radius."""
-        # Compute largest eigenvalue magnitude
-        eigenvalues = sparse.linalg.eigs(matrix, k=1, which='LM', return_eigenvectors=False)
-        current_radius = np.abs(eigenvalues[0]).real
+        try:
+            # Compute largest eigenvalue magnitude
+            eigenvalues = sparse.linalg.eigs(matrix, k=1, which='LM', return_eigenvectors=False, maxiter=1000)
+            current_radius = np.abs(eigenvalues[0]).real
+        except sparse.linalg.ArpackNoConvergence:
+            # If eigenvalue computation fails, use power iteration as fallback
+            logger.warning("Eigenvalue computation failed, using power iteration fallback")
+            current_radius = self._power_iteration_spectral_radius(matrix)
         
         # Scale to desired spectral radius
         if current_radius > 1e-10:  # Avoid division by zero
@@ -132,6 +137,24 @@ class SparseReservoir(tf.keras.layers.Layer):
             matrix = matrix * scaling_factor
         
         return matrix
+    
+    def _power_iteration_spectral_radius(self, matrix: sparse.csr_matrix, max_iter: int = 100) -> float:
+        """Compute spectral radius using power iteration method."""
+        n = matrix.shape[0]
+        x = np.random.randn(n)
+        x = x / np.linalg.norm(x)
+        
+        for _ in range(max_iter):
+            x_new = matrix.dot(x)
+            eigenvalue = np.dot(x, x_new)
+            x_new_norm = np.linalg.norm(x_new)
+            
+            if x_new_norm < 1e-10:
+                break
+                
+            x = x_new / x_new_norm
+        
+        return abs(eigenvalue)
     
     def sine_activation(self, x: tf.Tensor) -> tf.Tensor:
         """
