@@ -42,6 +42,11 @@ try:
 except ImportError:
     from lsm_lite.core.rolling_wave_storage import RollingWaveStorage, WaveStorageError
 
+try:
+    from ..core.attentive_reservoir import AttentiveReservoir
+except ImportError:
+    from lsm_lite.core.attentive_reservoir import AttentiveReservoir
+
 logger = logging.getLogger(__name__)
 
 
