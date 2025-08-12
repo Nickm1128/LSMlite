@@ -199,21 +199,44 @@ class DataLoader:
         return None
     
     def _load_local_dataset(self) -> List[str]:
-        """Load from local files (JSON, CSV, TXT)."""
+        """Load from local files (JSON, CSV, TXT, Parquet)."""
         file_path = self.dataset_name
         _, ext = os.path.splitext(file_path)
         ext = ext.lower()
-        
+
         logger.info("Loading local file: %s", file_path)
-        
+
         if ext == '.json':
             return self._load_json_file(file_path)
         elif ext == '.csv':
             return self._load_csv_file(file_path)
         elif ext in ['.txt', '.text']:
             return self._load_text_file(file_path)
+        elif ext in ['.parquet', '.pq']:
+            return self._load_parquet_file(file_path)
         else:
             raise ValueError(f"Unsupported file format: {ext}")
+
+    def _load_parquet_file(self, file_path: str) -> List[str]:
+        """Load conversations from a local Parquet file."""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas not installed. Install with: pip install pandas")
+
+        logger.info("Loading Parquet file: %s", file_path)
+
+        df = pd.read_parquet(file_path)
+        conversations: List[str] = []
+
+        for _, row in df.iterrows():
+            text = self._extract_text_from_row(row)
+            if text:
+                conversations.append(text)
+                if self.max_samples and len(conversations) >= self.max_samples:
+                    break
+
+        return conversations
     
     def _load_json_file(self, file_path: str) -> List[str]:
         """Load conversations from JSON file."""
